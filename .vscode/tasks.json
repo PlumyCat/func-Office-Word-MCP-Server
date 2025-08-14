@@ -1,0 +1,24 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "func",
+			"label": "func: host start",
+			"command": "host start",
+			"problemMatcher": "$func-python-watch",
+			"isBackground": true,
+			"options": {
+				"cwd": "${workspaceFolder}/src"
+			}
+		},
+		{
+			"label": "tests: pytest",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python -m pytest -q",
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"problemMatcher": []
+		}
+	]
+}
