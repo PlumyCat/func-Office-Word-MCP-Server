@@ -174,3 +174,5 @@ cython_debug/
 .pypirc
 .azure
 src/local.settings.json
+docs/
+test_endpoints.http
