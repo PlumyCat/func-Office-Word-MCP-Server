@@ -94,7 +94,7 @@ The following screenshot illustrates the permissions setup:
 
 ## Prepare your local environment
 
-An Azure Storage Emulator is needed for this particular sample because we will save and get snippets from blob storage.
+An Azure Storage Emulator is needed for this sample because the Word tools use Azure Blob Storage to store documents.
 
 1. Start Azurite
 
@@ -139,19 +139,11 @@ An Azure Storage Emulator is needed for this particular sample because we will s
     http://0.0.0.0:7071/runtime/webhooks/mcp/sse
     ```
 
-1. **List MCP Servers** from command palette and start the server
-1. In Copilot chat agent mode enter a prompt to trigger the tool, e.g., select some code and enter this prompt
+1. **List MCP Servers** from command palette, choose your server, and select **Start**
+1. In Copilot chat agent mode enter a prompt to trigger a tool, for example:
 
     ```plaintext
     Say Hello
-    ```
-
-    ```plaintext
-    Save this snippet as snippet1 
-    ```
-
-    ```plaintext
-    Retrieve snippet1 and apply to newFile.py
     ```
 
 1. When prompted to run the tool, consent by clicking **Continue**
@@ -178,33 +170,7 @@ An Azure Storage Emulator is needed for this particular sample because we will s
 
 5. **List Tools**.  Click on a tool and **Run Tool**.
 
-## Verify local blob storage in Azurite
 
-After testing the snippet save functionality locally, you can verify that blobs are being stored correctly in your local Azurite storage emulator.
-
-### Using Azure Storage Explorer
-
-1. Open Azure Storage Explorer
-1. In the left panel, expand **Emulator & Attached** → **Storage Accounts** → **(Emulator - Default Ports) (Key)**
-1. Navigate to **Blob Containers** → **snippets**
-1. You should see any saved snippets as blob files in this container
-1. Double-click on any blob to view its contents and verify the snippet data was saved correctly
-
-### Using Azure CLI (Alternative)
-
-If you prefer using the command line, you can also verify blobs using Azure CLI with the storage emulator:
-
-```shell
-# List blobs in the snippets container
-az storage blob list --container-name snippets --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
-```
-
-```shell
-# Download a specific blob to view its contents
-az storage blob download --container-name snippets --name <blob-name> --file <local-file-path> --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
-```
-
-This verification step ensures your MCP server is correctly interacting with the local storage emulator and that the blob storage functionality is working as expected before deploying to Azure.
 
 ## Deploy to Azure for Remote MCP
 
@@ -329,84 +295,21 @@ azd deploy
 
 ## Source Code
 
-The function code for the `get_snippet` and `save_snippet` endpoints are defined in the Python files in the `src` directory. The MCP function annotations expose these functions as MCP Server tools.
+The function code for each MCP tool is defined in the Python files in the `src` directory. Functions are exposed as MCP tools using the `@app.generic_trigger` decorator.
 
-Here's the actual code from the function_app.py file:
+Here's the `hello_mcp` tool from `function_app.py`:
 
 ```python
-
-@app.generic_trigger(arg_name="context", type="mcpToolTrigger", toolName="hello", 
-                     description="Hello world.", 
-                     toolProperties="[]")
+@app.generic_trigger(
+    arg_name="context",
+    type="mcpToolTrigger",
+    toolName="hello_mcp",
+    description="Hello world.",
+    toolProperties="[]",
+)
 def hello_mcp(context) -> None:
-    """
-    A simple function that returns a greeting message.
-
-    Args:
-        context: The trigger context (not used in this function).
-
-    Returns:
-        str: A greeting message.
-    """
+    """A simple function that returns a greeting message."""
     return "Hello I am MCPTool!"
-
-
-@app.generic_trigger(
-    arg_name="context",
-    type="mcpToolTrigger",
-    toolName="getsnippet",
-    description="Retrieve a snippet by name.",
-    toolProperties=tool_properties_get_snippets_json
-)
-@app.generic_input_binding(
-    arg_name="file",
-    type="blob",
-    connection="AzureWebJobsStorage",
-    path=_BLOB_PATH
-)
-def get_snippet(file: func.InputStream, context) -> str:
-    """
-    Retrieves a snippet by name from Azure Blob Storage.
- 
-    Args:
-        file (func.InputStream): The input binding to read the snippet from Azure Blob Storage.
-        context: The trigger context containing the input arguments.
- 
-    Returns:
-        str: The content of the snippet or an error message.
-    """
-    snippet_content = file.read().decode("utf-8")
-    logging.info(f"Retrieved snippet: {snippet_content}")
-    return snippet_content
-
-
-@app.generic_trigger(
-    arg_name="context",
-    type="mcpToolTrigger",
-    toolName="savesnippet",
-    description="Save a snippet with a name.",
-    toolProperties=tool_properties_save_snippets_json
-)                   
-@app.generic_output_binding(
-    arg_name="file",
-    type="blob",
-    connection="AzureWebJobsStorage",
-    path=_BLOB_PATH
-)
-def save_snippet(file: func.Out[str], context) -> str:
-    content = json.loads(context)
-    snippet_name_from_args = content["arguments"][_SNIPPET_NAME_PROPERTY_NAME]
-    snippet_content_from_args = content["arguments"][_SNIPPET_PROPERTY_NAME]
-
-    if not snippet_name_from_args:
-        return "No snippet name provided"
-
-    if not snippet_content_from_args:
-        return "No snippet content provided"
- 
-    file.set(snippet_content_from_args)
-    logging.info(f"Saved snippet: {snippet_content_from_args}")
-    return f"Snippet '{snippet_content_from_args}' saved successfully"
 ```
 
 Note that the `host.json` file also includes a reference to the experimental bundle, which is required for apps using this feature:
