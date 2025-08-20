@@ -72,7 +72,7 @@ See [mcp-tools-list.txt](mcp-tools-list.txt) for an up-to-date list.
 
 ## Microsoft Entra application permissions (Graph)
 
-For the Word → PDF conversion via Microsoft Graph and SharePoint, create an app registration in Microsoft Entra ID and grant the following Application permissions (admin consent required):
+For the Word → PDF conversion via Microsoft Graph and SharePoint, create an app registration in Microsoft Entra ID and grant the following Application permissions (admin consent required). This approach does not require the `docx2pdf` library:
 
 - Files.ReadWrite.All
 - Sites.ReadWrite.All
