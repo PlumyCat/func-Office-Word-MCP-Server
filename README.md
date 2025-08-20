@@ -293,6 +293,39 @@ az webapp log tail --name $FUNCTION_APP_NAME --resource-group $RESOURCE_GROUP
 azd deploy
 ```
 
+## Testing the Websearch function
+
+The repository includes an integration test (`tests/websearch_test.py`) that
+calls a SearXNG/Azure Function backend via HTTP. You can perform the same call
+manually with `curl`.
+
+### Local function
+
+```bash
+curl -X POST http://localhost:7071/api/websearch \
+  -H "Content-Type: application/json" \
+  -H "x-functions-key: $WEBSEARCH_FUNCTION_KEY" \
+  -d '{"query": "Microsoft Azure"}'
+```
+
+### Deployed function
+
+```bash
+curl -X POST https://<funcappname>.azurewebsites.net/api/websearch \
+  -H "Content-Type: application/json" \
+  -H "x-functions-key: $WEBSEARCH_FUNCTION_KEY" \
+  -d '{"query": "Microsoft Azure"}'
+```
+
+Set the `WEBSEARCH_FUNCTION_URL` and `WEBSEARCH_FUNCTION_KEY` environment
+variables before running the automated test:
+
+```bash
+WEBSEARCH_FUNCTION_URL=https://<funcappname>.azurewebsites.net/api/websearch \
+WEBSEARCH_FUNCTION_KEY=<key> \
+pytest tests/websearch_test.py
+```
+
 ## Source Code
 
 The function code for each MCP tool is defined in the Python files in the `src` directory. Functions are exposed as MCP tools using the `@app.generic_trigger` decorator.
