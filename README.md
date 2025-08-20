@@ -26,7 +26,49 @@ Below is the architecture diagram for the Remote MCP Server using Azure Function
 
 ![Architecture Diagram](architecture-diagram.png)
 
+## Available MCP Tools
 
+The server exposes the following tools:
+
+- hello_mcp
+- word_create_document
+- word_add_paragraph
+- word_get_text
+- word_add_heading
+- word_copy_document
+- word_search_and_replace
+- word_list_documents
+- word_list_templates
+- word_get_document_info
+- word_get_document_outline
+- word_add_table
+- word_add_picture
+- word_add_page_break
+- word_get_paragraph_text
+- word_find_text
+- word_format_text
+- word_delete_paragraph
+- word_create_custom_style
+- word_format_table
+- word_set_table_cell_shading
+- word_apply_table_alternating_rows
+- word_highlight_table_header
+- word_merge_table_cells
+- word_merge_table_cells_horizontal
+- word_merge_table_cells_vertical
+- word_set_table_cell_alignment
+- word_set_table_alignment_all
+- word_format_table_cell_text
+- word_set_table_cell_padding
+- word_set_table_column_width
+- word_set_table_width
+- word_auto_fit_table_columns
+- word_get_all_comments
+- word_get_comments_by_author
+- word_get_comments_for_paragraph
+- word_add_comment
+
+See [mcp-tools-list.txt](mcp-tools-list.txt) for an up-to-date list.
 
 ## Microsoft Entra application permissions (Graph)
 
