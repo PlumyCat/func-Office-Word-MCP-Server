@@ -52,7 +52,6 @@ def hello_mcp(context) -> None:
     return "Hello I am MCPTool!"
 
 
-## (Removed demo tools get_snippet/save_snippet)
 
 
 # Health route (anonymous)
@@ -69,7 +68,8 @@ def ping(req: func.HttpRequest) -> func.HttpResponse:
 _docx = None
 _blob_service_client = None
 _blob_container_name = None
-_ORG_TEMPLATES_PREFIX = os.environ.get("ORG_TEMPLATES_PREFIX", "shared/templates/")
+_ORG_TEMPLATES_PREFIX = os.environ.get(
+    "ORG_TEMPLATES_PREFIX", "shared/templates/")
 _graph_session = None
 _graph_token_expires = None
 
@@ -106,7 +106,8 @@ def _init_storage():
     except Exception as exc:
         logging.error("Failed to import azure-storage-blob: %s", exc)
         raise
-    connection_string = os.environ.get("WORD_STORAGE_CONNECTION_STRING") or os.environ.get("AzureWebJobsStorage")
+    connection_string = os.environ.get(
+        "WORD_STORAGE_CONNECTION_STRING") or os.environ.get("AzureWebJobsStorage")
     if not connection_string:
         raise RuntimeError("AzureWebJobsStorage is not configured")
     _blob_container_name = os.environ.get("WORD_DOCS_CONTAINER", "stword")
@@ -114,12 +115,16 @@ def _init_storage():
         try:
             conn_timeout = float(os.environ.get("BLOB_CONN_TIMEOUT", "60"))
             read_timeout = float(os.environ.get("BLOB_READ_TIMEOUT", "300"))
-            transport = RequestsTransport(connection_timeout=conn_timeout, read_timeout=read_timeout)
-            _blob_service_client = BlobServiceClient.from_connection_string(connection_string, transport=transport)
+            transport = RequestsTransport(
+                connection_timeout=conn_timeout, read_timeout=read_timeout)
+            _blob_service_client = BlobServiceClient.from_connection_string(
+                connection_string, transport=transport)
         except Exception:
-            _blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+            _blob_service_client = BlobServiceClient.from_connection_string(
+                connection_string)
     else:
-        _blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+        _blob_service_client = BlobServiceClient.from_connection_string(
+            connection_string)
     try:
         _blob_service_client.create_container(_blob_container_name)
     except Exception as exc:
@@ -131,7 +136,8 @@ def _init_storage():
 
 def _get_blob_client(blob_name: str):
     _init_storage()
-    container_client = _blob_service_client.get_container_client(_blob_container_name)
+    container_client = _blob_service_client.get_container_client(
+        _blob_container_name)
     return container_client.get_blob_client(blob_name)
 
 
@@ -187,6 +193,7 @@ def _ensure_user_paths(user_id: str) -> list[str]:
     for ph in placeholders:
         try:
             client = _get_blob_client(ph)
+
             def _op():
                 return client.upload_blob(b"", overwrite=False)
             _with_retries(_op)
@@ -215,16 +222,20 @@ def _generate_blob_sas_url(blob_name: str, permissions: str = "r") -> dict:
     try:
         from azure.storage.blob import generate_blob_sas, BlobSasPermissions
     except Exception as exc:
-        logging.error("Failed to import azure-storage-blob SAS helpers: %s", exc)
+        logging.error(
+            "Failed to import azure-storage-blob SAS helpers: %s", exc)
         raise
-    conn = os.environ.get("WORD_STORAGE_CONNECTION_STRING") or os.environ.get("AzureWebJobsStorage")
+    conn = os.environ.get("WORD_STORAGE_CONNECTION_STRING") or os.environ.get(
+        "AzureWebJobsStorage")
     if not conn:
-        raise RuntimeError("No storage connection string available for SAS generation")
+        raise RuntimeError(
+            "No storage connection string available for SAS generation")
     kv = _parse_storage_connection_string(conn)
     account_name = kv.get("accountname")
     account_key = kv.get("accountkey")
     if not account_name or not account_key:
-        raise RuntimeError("Storage connection string missing AccountName/AccountKey for SAS generation")
+        raise RuntimeError(
+            "Storage connection string missing AccountName/AccountKey for SAS generation")
     ttl_seconds_str = os.environ.get("WORD_BLOB_TTL_SECONDS", "3600")
     try:
         ttl_seconds = int(ttl_seconds_str)
@@ -332,9 +343,11 @@ def _init_graph_session():
     client_id = os.environ.get("CLIENT_ID")
     client_secret = os.environ.get("CLIENT_SECRET")
     if not tenant_id or not client_id or not client_secret:
-        raise RuntimeError("Graph app credentials missing (TENANT_ID, CLIENT_ID, CLIENT_SECRET)")
+        raise RuntimeError(
+            "Graph app credentials missing (TENANT_ID, CLIENT_ID, CLIENT_SECRET)")
     authority = f"https://login.microsoftonline.com/{tenant_id}"
-    app = msal.ConfidentialClientApplication(client_id=client_id, client_credential=client_secret, authority=authority)
+    app = msal.ConfidentialClientApplication(
+        client_id=client_id, client_credential=client_secret, authority=authority)
     scope = ["https://graph.microsoft.com/.default"]
     result = app.acquire_token_silent(scopes=scope, account=None)
     if not result:
@@ -344,11 +357,13 @@ def _init_graph_session():
     token = result["access_token"]
     try:
         from datetime import datetime, timezone, timedelta
-        _graph_token_expires = datetime.now(timezone.utc) + timedelta(seconds=int(result.get("expires_in", 300)))
+        _graph_token_expires = datetime.now(
+            timezone.utc) + timedelta(seconds=int(result.get("expires_in", 300)))
     except Exception:
         _graph_token_expires = None
     sess = requests.Session()
-    sess.headers.update({"Authorization": f"Bearer {token}", "Accept": "application/json"})
+    sess.headers.update(
+        {"Authorization": f"Bearer {token}", "Accept": "application/json"})
     _graph_session = sess
 
 
@@ -371,15 +386,18 @@ def _graph_upload_to_drive(drive_id: str, name: str, content: bytes) -> dict:
     # Small files upload (<= 4MB) via simple upload; for larger, create upload session
     if len(content) <= 4 * 1024 * 1024:
         url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{name}:/content"
-        resp = _graph_request("PUT", url, data=content, headers={"Content-Type": "application/octet-stream"})
+        resp = _graph_request("PUT", url, data=content, headers={
+                              "Content-Type": "application/octet-stream"})
         return resp.json()
     # Upload session for big files
     url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{name}:/createUploadSession"
-    session = _graph_request("POST", url, json={"item": {"@microsoft.graph.conflictBehavior": "replace"}}).json()
+    session = _graph_request("POST", url, json={
+                             "item": {"@microsoft.graph.conflictBehavior": "replace"}}).json()
     upload_url = session.get("uploadUrl")
     if not upload_url:
         raise RuntimeError("No uploadUrl in session")
-    import math, requests
+    import math
+    import requests
     chunk = 5 * 1024 * 1024
     size = len(content)
     start = 0
@@ -389,9 +407,11 @@ def _graph_upload_to_drive(drive_id: str, name: str, content: bytes) -> dict:
             "Content-Length": str(end - start + 1),
             "Content-Range": f"bytes {start}-{end}/{size}",
         }
-        r = requests.put(upload_url, headers=headers, data=content[start:end+1], timeout=60)
+        r = requests.put(upload_url, headers=headers,
+                         data=content[start:end+1], timeout=60)
         if r.status_code not in (200, 201, 202):
-            raise RuntimeError(f"Upload chunk failed: {r.status_code} {r.text[:200]}")
+            raise RuntimeError(
+                f"Upload chunk failed: {r.status_code} {r.text[:200]}")
         start = end + 1
     # Get item
     # Final 201/200 may already include item JSON; fetch to be safe
@@ -427,11 +447,14 @@ def _resolve_sharepoint_drive() -> str:
 # Define tool properties JSON for Word tools
 word_tool_props_create = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Filename for the new .docx (optional; UUID if omitted)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Filename for the new .docx (optional; UUID if omitted)").to_dict(),
         ToolProperty("title", "string", "Optional document title").to_dict(),
         ToolProperty("author", "string", "Optional author").to_dict(),
-        ToolProperty("template_blob", "string", "Optional template blob path, e.g. templates/base.dotx").to_dict(),
+        ToolProperty("template_blob", "string",
+                     "Optional template blob path, e.g. templates/base.dotx").to_dict(),
     ]
 )
 
@@ -552,14 +575,25 @@ def word_create_document(context) -> str:
 # ---- New HTTP endpoints: user init, image upload/list, template upload/list ----
 
 
-@app.route(route="users/{userId}/init", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="users/init", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 def init_user(req: func.HttpRequest) -> func.HttpResponse:
-    user_id = req.route_params.get("userId")
+    """Initialise l'espace utilisateur.
+
+    Format attendu: POST /api/users/init  JSON {"user_id": "..."}
+    (On tolère encore userId en entrée mais on renvoie user_id.)
+    """
+    user_id: str | None = None
+    try:
+        data = req.get_json()
+        if isinstance(data, dict):
+            user_id = data.get("user_id") or data.get("userId")
+    except Exception:
+        pass
     if not user_id:
-        return func.HttpResponse("Missing userId", status_code=400)
+        return func.HttpResponse("Missing user_id in JSON body", status_code=400)
     try:
         created = _ensure_user_paths(user_id)
-        body = json.dumps({"userId": user_id, "created": created})
+        body = json.dumps({"user_id": user_id, "created": created})
         return func.HttpResponse(body=body, mimetype="application/json", status_code=200)
     except Exception as exc:
         logging.exception("init_user failed")
@@ -581,7 +615,8 @@ def _read_form_file(req: func.HttpRequest, field_name: str = "file") -> tuple[by
                     # Extract filename from Content-Disposition
                     filename = None
                     try:
-                        cd = part.headers.get(b"Content-Disposition", b"").decode("utf-8", "ignore")
+                        cd = part.headers.get(
+                            b"Content-Disposition", b"").decode("utf-8", "ignore")
                         for seg in cd.split(";"):
                             seg = seg.strip()
                             if seg.startswith("filename="):
@@ -593,7 +628,8 @@ def _read_form_file(req: func.HttpRequest, field_name: str = "file") -> tuple[by
                         continue
                     content_type = None
                     try:
-                        content_type = part.headers.get(b"Content-Type", b"").decode("utf-8", "ignore") or None
+                        content_type = part.headers.get(
+                            b"Content-Type", b"").decode("utf-8", "ignore") or None
                     except Exception:
                         content_type = None
                     data = part.content or b""
@@ -619,8 +655,10 @@ def _read_form_file(req: func.HttpRequest, field_name: str = "file") -> tuple[by
         file = files.get(field_name)
         if file is not None:
             data = file.read()
-            filename = getattr(file, "filename", None) or req.params.get("fileName") or "upload.bin"
-            content_type = getattr(file, "content_type", None) or req.headers.get("content-type") or "application/octet-stream"
+            filename = getattr(file, "filename", None) or req.params.get(
+                "fileName") or "upload.bin"
+            content_type = getattr(file, "content_type", None) or req.headers.get(
+                "content-type") or "application/octet-stream"
             return data, filename, content_type
     except Exception as exc:
         logging.warning(
@@ -632,11 +670,12 @@ def _read_form_file(req: func.HttpRequest, field_name: str = "file") -> tuple[by
     # Fallback to raw body
     data = req.get_body() or b""
     filename = req.params.get("fileName") or "upload.bin"
-    content_type = req.headers.get("content-type") or "application/octet-stream"
+    content_type = req.headers.get(
+        "content-type") or "application/octet-stream"
     return data, filename, content_type
 
 
-## Removed multi-file parsing helper; using single-file uploads only
+# Removed multi-file parsing helper; using single-file uploads only
 
 
 def _sanitize_filename(name: str) -> str:
@@ -669,11 +708,18 @@ def _make_content_settings(content_type: str):
         return None
 
 
-@app.route(route="users/{userId}/images", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="users/images", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 def upload_image(req: func.HttpRequest) -> func.HttpResponse:
-    user_id = req.route_params.get("userId")
+    # Exige user_id dans JSON. (Tolère userId.)
+    user_id = None
+    try:
+        data = req.get_json()
+        if isinstance(data, dict):
+            user_id = data.get("user_id") or data.get("userId")
+    except Exception:
+        pass
     if not user_id:
-        return func.HttpResponse("Missing userId", status_code=400)
+        return func.HttpResponse("Missing user_id in JSON body", status_code=400)
     _init_storage()
     try:
         data, filename, content_type = _read_form_file(req, field_name="file")
@@ -708,22 +754,33 @@ def upload_image(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(f"upload failed: {exc}", status_code=500)
 
 
-@app.route(route="users/{userId}/images", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="users/images", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
 def list_images(req: func.HttpRequest) -> func.HttpResponse:
-    user_id = req.route_params.get("userId")
+    # Exige user_id dans JSON body (GET) ou tolère userId; pas de query.
+    user_id = None
+    try:
+        data = req.get_json()
+        if isinstance(data, dict):
+            user_id = data.get("user_id") or data.get("userId")
+    except Exception:
+        pass
     if not user_id:
-        return func.HttpResponse("Missing userId", status_code=400)
+        return func.HttpResponse("Missing user_id in JSON body", status_code=400)
     _init_storage()
-    container_client = _blob_service_client.get_container_client(_blob_container_name)
+    container_client = _blob_service_client.get_container_client(
+        _blob_container_name)
     prefix = f"{user_id}/image_blob/"
     try:
-        try:
-            page_size = int(req.params.get("pageSize", "50"))
-        except Exception:
-            page_size = 50
-        page_size = max(1, min(page_size, 200))
+        page_size_val: int = 50
+        if isinstance(data, dict) and data.get("pageSize") is not None:
+            try:
+                page_size_val = int(data.get("pageSize"))
+            except Exception:
+                page_size_val = 50
+        page_size = max(1, min(page_size_val, 200))
         token = req.params.get("continuationToken")
-        pager = container_client.list_blobs(name_starts_with=prefix, results_per_page=page_size).by_page(continuation_token=token)
+        pager = container_client.list_blobs(
+            name_starts_with=prefix, results_per_page=page_size).by_page(continuation_token=token)
         items = []
         next_token = None
         for page in pager:
@@ -747,11 +804,17 @@ def list_images(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(f"list failed: {exc}", status_code=500)
 
 
-@app.route(route="users/{userId}/templates", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="users/templates", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 def upload_template(req: func.HttpRequest) -> func.HttpResponse:
-    user_id = req.route_params.get("userId")
+    user_id = None
+    try:
+        data = req.get_json()
+        if isinstance(data, dict):
+            user_id = data.get("user_id") or data.get("userId")
+    except Exception:
+        pass
     if not user_id:
-        return func.HttpResponse("Missing userId", status_code=400)
+        return func.HttpResponse("Missing user_id in JSON body", status_code=400)
     _init_storage()
     try:
         data, filename, content_type = _read_form_file(req, field_name="file")
@@ -790,24 +853,35 @@ def upload_template(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(f"upload failed: {exc}", status_code=500)
 
 
-@app.route(route="users/{userId}/templates", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="users/templates", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
 def list_templates_http(req: func.HttpRequest) -> func.HttpResponse:
-    user_id = req.route_params.get("userId")
+    user_id = None
+    try:
+        data = req.get_json()
+        if isinstance(data, dict):
+            user_id = data.get("user_id") or data.get("userId")
+    except Exception:
+        pass
     if not user_id:
-        return func.HttpResponse("Missing userId", status_code=400)
+        return func.HttpResponse("Missing user_id in JSON body", status_code=400)
     _init_storage()
-    container_client = _blob_service_client.get_container_client(_blob_container_name)
+    container_client = _blob_service_client.get_container_client(
+        _blob_container_name)
     prefix = f"{user_id}/templates/"
     try:
-        try:
-            page_size = int(req.params.get("pageSize", "50"))
-        except Exception:
-            page_size = 50
-        page_size = max(1, min(page_size, 200))
+        page_size_val: int = 50
+        if isinstance(data, dict) and data.get("pageSize") is not None:
+            try:
+                page_size_val = int(data.get("pageSize"))
+            except Exception:
+                page_size_val = 50
+        page_size = max(1, min(page_size_val, 200))
         token = req.params.get("continuationToken")
-        include_shared = (req.params.get("includeShared", "false").lower() == "true")
+        include_shared = (req.params.get(
+            "includeShared", "false").lower() == "true")
         # Page user templates
-        pager_user = container_client.list_blobs(name_starts_with=prefix, results_per_page=page_size).by_page(continuation_token=token)
+        pager_user = container_client.list_blobs(
+            name_starts_with=prefix, results_per_page=page_size).by_page(continuation_token=token)
         user_items = []
         user_token = None
         for page in pager_user:
@@ -827,7 +901,8 @@ def list_templates_http(req: func.HttpRequest) -> func.HttpResponse:
             payload["continuationToken"] = user_token
         if include_shared:
             # Page shared templates separately
-            pager_shared = container_client.list_blobs(name_starts_with=_ORG_TEMPLATES_PREFIX, results_per_page=page_size).by_page(continuation_token=req.params.get("sharedContinuationToken"))
+            pager_shared = container_client.list_blobs(name_starts_with=_ORG_TEMPLATES_PREFIX, results_per_page=page_size).by_page(
+                continuation_token=req.params.get("sharedContinuationToken"))
             shared_items = []
             shared_token = None
             for page in pager_shared:
@@ -840,7 +915,8 @@ def list_templates_http(req: func.HttpRequest) -> func.HttpResponse:
                         "contentType": getattr(getattr(blob, "content_settings", None), "content_type", None),
                         "lastModified": getattr(blob, "last_modified", None).isoformat() if getattr(blob, "last_modified", None) else None,
                     })
-                shared_token = getattr(pager_shared, "continuation_token", None)
+                shared_token = getattr(
+                    pager_shared, "continuation_token", None)
                 break
             payload["shared"] = {"items": shared_items}
             if shared_token:
@@ -854,7 +930,8 @@ def list_templates_http(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="templates", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
 def list_shared_templates(req: func.HttpRequest) -> func.HttpResponse:
     _init_storage()
-    container_client = _blob_service_client.get_container_client(_blob_container_name)
+    container_client = _blob_service_client.get_container_client(
+        _blob_container_name)
     prefix = _ORG_TEMPLATES_PREFIX
     try:
         try:
@@ -863,7 +940,8 @@ def list_shared_templates(req: func.HttpRequest) -> func.HttpResponse:
             page_size = 50
         page_size = max(1, min(page_size, 200))
         token = req.params.get("continuationToken")
-        pager = container_client.list_blobs(name_starts_with=prefix, results_per_page=page_size).by_page(continuation_token=token)
+        pager = container_client.list_blobs(
+            name_starts_with=prefix, results_per_page=page_size).by_page(continuation_token=token)
         items = []
         next_token = None
         for page in pager:
@@ -887,13 +965,15 @@ def list_shared_templates(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(f"list failed: {exc}", status_code=500)
 
 
-## Removed: promote_template endpoint (renaming/copy deprecated)
+# Removed: promote_template endpoint (renaming/copy deprecated)
 
 
 word_tool_props_add_paragraph = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx blob name in the container (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx blob name in the container (without user prefix)").to_dict(),
         ToolProperty("text", "string", "Paragraph text to append").to_dict(),
         ToolProperty("style", "string", "Optional Word style name").to_dict(),
     ]
@@ -933,8 +1013,10 @@ def word_add_paragraph(context) -> str:
 
 word_tool_props_get_text = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
     ]
 )
 
@@ -965,8 +1047,10 @@ def word_get_text(context) -> str:
 # Additional Word tools
 word_tool_props_add_heading = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
         ToolProperty("text", "string", "Heading text").to_dict(),
         ToolProperty("level", "number", "Heading level 1-9").to_dict(),
     ]
@@ -1003,9 +1087,12 @@ def word_add_heading(context) -> str:
 
 word_tool_props_copy = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("source_filename", "string", "Source .docx filename (without user prefix)").to_dict(),
-        ToolProperty("destination_filename", "string", "Destination .docx filename (without user prefix; optional; UUID if omitted)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("source_filename", "string",
+                     "Source .docx filename (without user prefix)").to_dict(),
+        ToolProperty("destination_filename", "string",
+                     "Destination .docx filename (without user prefix; optional; UUID if omitted)").to_dict(),
     ]
 )
 
@@ -1027,7 +1114,8 @@ def word_copy_document(context) -> str:
     if not source:
         return "Missing source_filename"
     src_blob = _get_blob_client(f"{user_id}/{source}" if user_id else source)
-    dest_blob = _get_blob_client(f"{user_id}/{destination}" if user_id else destination)
+    dest_blob = _get_blob_client(
+        f"{user_id}/{destination}" if user_id else destination)
     # Server-side copy
     dest_blob.start_copy_from_url(src_blob.url)
     return f"Copied to blob '{_blob_container_name}/" + (f"{user_id}/{destination}" if user_id else destination) + "'"
@@ -1035,10 +1123,13 @@ def word_copy_document(context) -> str:
 
 word_tool_props_search_replace = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
         ToolProperty("find_text", "string", "Text to find").to_dict(),
-        ToolProperty("replace_text", "string", "Text to replace with").to_dict(),
+        ToolProperty("replace_text", "string",
+                     "Text to replace with").to_dict(),
     ]
 )
 
@@ -1078,7 +1169,8 @@ def word_search_and_replace(context) -> str:
 # List documents in the container
 word_tool_props_list_docs = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
     ]
 )
 
@@ -1092,7 +1184,8 @@ word_tool_props_list_docs = json.dumps(
 )
 def word_list_documents(context) -> str:
     _init_storage()
-    container_client = _blob_service_client.get_container_client(_blob_container_name)
+    container_client = _blob_service_client.get_container_client(
+        _blob_container_name)
     names = []
     try:
         payload = json.loads(context)
@@ -1110,8 +1203,10 @@ def word_list_documents(context) -> str:
 # Document info
 word_tool_props_get_info = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
     ]
 )
 
@@ -1148,8 +1243,10 @@ def word_get_document_info(context) -> str:
 # Document outline (headings)
 word_tool_props_get_outline = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
     ]
 )
 
@@ -1298,8 +1395,10 @@ def convert_word_to_pdf(req: func.HttpRequest) -> func.HttpResponse:
             body_json = req.get_json()
         except Exception:
             body_json = {}
-        explicit_dest = (body_json.get("dest") if isinstance(body_json, dict) else None) or req.params.get("dest")
-        user_id = req.params.get("userId") or (body_json.get("userId") if isinstance(body_json, dict) else None)
+        explicit_dest = (body_json.get("dest") if isinstance(
+            body_json, dict) else None) or req.params.get("dest")
+        user_id = req.params.get("user_id") or (body_json.get(
+            "user_id") if isinstance(body_json, dict) else None)
         base_name = os.path.splitext(os.path.basename(filename))[0]
         pdf_file = f"{base_name}.pdf"
         if explicit_dest:
@@ -1312,17 +1411,19 @@ def convert_word_to_pdf(req: func.HttpRequest) -> func.HttpResponse:
                 elif user_id:
                     dest_blob_name = f"{user_id}/{_sanitize_filename(explicit_dest)}"
                 else:
-                    return func.HttpResponse("Missing userId to resolve dest", status_code=400)
+                    return func.HttpResponse("Missing user_id to resolve dest", status_code=400)
         else:
             if blob_path:
                 parent = os.path.dirname(blob_path).rstrip("/")
-                dest_blob_name = f"{parent}/{_sanitize_filename(pdf_file)}" if parent else _sanitize_filename(pdf_file)
+                dest_blob_name = f"{parent}/{_sanitize_filename(pdf_file)}" if parent else _sanitize_filename(
+                    pdf_file)
             else:
                 if not user_id:
-                    return func.HttpResponse("Missing userId for upload destination", status_code=400)
+                    return func.HttpResponse("Missing user_id for upload destination", status_code=400)
                 dest_blob_name = f"{user_id}/{_sanitize_filename(pdf_file)}"
         blob_client = _get_blob_client(dest_blob_name)
         cs = _make_content_settings("application/pdf")
+
         def _op():
             return blob_client.upload_blob(pdf_bytes, overwrite=True, content_settings=cs)
         _with_retries(_op)
@@ -1367,6 +1468,7 @@ def _set_cell_padding(cell, top=None, bottom=None, left=None, right=None, unit=N
         from docx.oxml.ns import qn
     except Exception:
         return
+
     def to_twips(val):
         try:
             return str(int(float(val) * 20))
@@ -1396,6 +1498,7 @@ def _set_table_width(table, width_value: float, width_type: str = "points"):
         from docx.oxml.ns import qn
     except Exception:
         return
+
     def to_twips(val):
         try:
             return str(int(float(val) * 20))
@@ -1430,6 +1533,7 @@ def _set_cell_width(cell, width_value: float, width_type: str = "points"):
         from docx.oxml.ns import qn
     except Exception:
         return
+
     def to_twips(val):
         try:
             return str(int(float(val) * 20))
@@ -1480,10 +1584,12 @@ def _set_table_layout_autofit(table):
 
 
 word_tool_props_format_table = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
-    ToolProperty("has_header_row", "boolean", "Mark first row as header (visual only)").to_dict(),
+    ToolProperty("has_header_row", "boolean",
+                 "Mark first row as header (visual only)").to_dict(),
 ])
 
 
@@ -1537,7 +1643,8 @@ def word_format_table(context) -> str:
 
 
 word_tool_props_set_table_cell_shading = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("row_index", "number", "Row index (0-based)").to_dict(),
@@ -1584,7 +1691,8 @@ def word_set_table_cell_shading(context) -> str:
 
 
 word_tool_props_apply_table_alternating_rows = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("color1", "string", "Hex color 1 (default FFFFFF)").to_dict(),
@@ -1628,11 +1736,14 @@ def word_apply_table_alternating_rows(context) -> str:
 
 
 word_tool_props_highlight_table_header = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
-    ToolProperty("header_color", "string", "Header color (default 4472C4)").to_dict(),
-    ToolProperty("text_color", "string", "Header text color (default FFFFFF)").to_dict(),
+    ToolProperty("header_color", "string",
+                 "Header color (default 4472C4)").to_dict(),
+    ToolProperty("text_color", "string",
+                 "Header text color (default FFFFFF)").to_dict(),
 ])
 
 
@@ -1666,13 +1777,8 @@ def word_highlight_table_header(context) -> str:
         try:
             for run in cell.paragraphs[0].runs:
                 run.font.color.rgb = _docx.shared.RGBColor.from_string(text_color)
-        except Exception as exc:
-            logging.warning(
-                "Failed to set header text color for %s (user %s): %s",
-                blob_name,
-                user_id,
-                exc,
-            )
+        except Exception:
+            pass
     doc.save(local_path)
     _upload_file_to_blob(local_path, blob_name)
     sas = _generate_blob_sas_url(blob_name, permissions="r")
@@ -1680,7 +1786,8 @@ def word_highlight_table_header(context) -> str:
 
 
 word_tool_props_merge_cells = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("start_row", "number", "Start row index").to_dict(),
@@ -1728,7 +1835,8 @@ def word_merge_table_cells(context) -> str:
 
 
 word_tool_props_merge_cells_horizontal = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("row_index", "number", "Row index").to_dict(),
@@ -1774,7 +1882,8 @@ def word_merge_table_cells_horizontal(context) -> str:
 
 
 word_tool_props_merge_cells_vertical = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("col_index", "number", "Column index").to_dict(),
@@ -1820,12 +1929,14 @@ def word_merge_table_cells_vertical(context) -> str:
 
 
 word_tool_props_set_table_cell_alignment = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("row_index", "number", "Row index (0-based)").to_dict(),
     ToolProperty("col_index", "number", "Column index (0-based)").to_dict(),
-    ToolProperty("horizontal", "string", "left|center|right|justify").to_dict(),
+    ToolProperty("horizontal", "string",
+                 "left|center|right|justify").to_dict(),
     ToolProperty("vertical", "string", "top|center|bottom").to_dict(),
 ])
 
@@ -1897,10 +2008,12 @@ def word_set_table_cell_alignment(context) -> str:
 
 
 word_tool_props_set_table_alignment_all = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
-    ToolProperty("horizontal", "string", "left|center|right|justify").to_dict(),
+    ToolProperty("horizontal", "string",
+                 "left|center|right|justify").to_dict(),
     ToolProperty("vertical", "string", "top|center|bottom").to_dict(),
 ])
 
@@ -1967,7 +2080,8 @@ def word_set_table_alignment_all(context) -> str:
 
 
 word_tool_props_format_table_cell_text = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("row_index", "number", "Row index (0-based)").to_dict(),
@@ -2031,13 +2145,8 @@ def word_format_table_cell_text(context) -> str:
                 if color:
                     try:
                         run.font.color.rgb = _docx.shared.RGBColor.from_string(str(color))
-                    except Exception as exc:
-                        logging.warning(
-                            "Failed to set font color for %s (user %s): %s",
-                            blob_name,
-                            user_id,
-                            exc,
-                        )
+                    except Exception:
+                        pass
                 if font_size is not None:
                     try:
                         run.font.size = _docx.shared.Pt(float(font_size))
@@ -2064,7 +2173,8 @@ def word_format_table_cell_text(context) -> str:
 
 
 word_tool_props_set_table_cell_padding = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("row_index", "number", "Row index (0-based)").to_dict(),
@@ -2073,7 +2183,8 @@ word_tool_props_set_table_cell_padding = json.dumps([
     ToolProperty("bottom", "number", "Bottom padding (points)").to_dict(),
     ToolProperty("left", "number", "Left padding (points)").to_dict(),
     ToolProperty("right", "number", "Right padding (points)").to_dict(),
-    ToolProperty("unit", "string", "Padding unit in points (only 'points' supported)").to_dict(),
+    ToolProperty("unit", "string",
+                 "Padding unit in points (only 'points' supported)").to_dict(),
 ])
 
 
@@ -2109,7 +2220,8 @@ def word_set_table_cell_padding(context) -> str:
     table = doc.tables[t_idx]
     if r >= len(table.rows) or c >= len(table.columns):
         return "cell index out of range"
-    _set_cell_padding(table.cell(r, c), top=top, bottom=bottom, left=left, right=right, unit=unit)
+    _set_cell_padding(table.cell(r, c), top=top, bottom=bottom,
+                      left=left, right=right, unit=unit)
     doc.save(local_path)
     _upload_file_to_blob(local_path, blob_name)
     sas = _generate_blob_sas_url(blob_name, permissions="r")
@@ -2117,12 +2229,15 @@ def word_set_table_cell_padding(context) -> str:
 
 
 word_tool_props_set_table_column_width = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("col_index", "number", "Column index (0-based)").to_dict(),
-    ToolProperty("width", "number", "Width value (points or percent)").to_dict(),
-    ToolProperty("width_type", "string", "points|percent (default points)").to_dict(),
+    ToolProperty("width", "number",
+                 "Width value (points or percent)").to_dict(),
+    ToolProperty("width_type", "string",
+                 "points|percent (default points)").to_dict(),
 ])
 
 
@@ -2163,20 +2278,25 @@ def word_set_table_column_width(context) -> str:
 
 
 word_tool_props_set_table_column_widths = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
-    ToolProperty("widths", "array", "Array of widths by column (points unless width_type=percent)", item_type="number").to_dict(),
-    ToolProperty("width_type", "string", "points|percent (default points)").to_dict(),
+    ToolProperty("widths", "array", "Array of widths by column (points unless width_type=percent)",
+                 item_type="number").to_dict(),
+    ToolProperty("width_type", "string",
+                 "points|percent (default points)").to_dict(),
 ])
 
 
 word_tool_props_set_table_width = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
     ToolProperty("width", "number", "Table width value").to_dict(),
-    ToolProperty("width_type", "string", "points|percent (default points)").to_dict(),
+    ToolProperty("width_type", "string",
+                 "points|percent (default points)").to_dict(),
 ])
 
 
@@ -2213,7 +2333,8 @@ def word_set_table_width(context) -> str:
 
 
 word_tool_props_auto_fit_table_columns = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
     ToolProperty("filename", "string", "Target .docx filename").to_dict(),
     ToolProperty("table_index", "number", "Table index (0-based)").to_dict(),
 ])
@@ -2252,9 +2373,12 @@ def word_auto_fit_table_columns(context) -> str:
 # ---- Vague 3: Comments and PDF conversion ----
 
 word_tool_props_add_comment = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-    ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
-    ToolProperty("paragraph_index", "number", "Zero-based paragraph index to attach comment to").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("filename", "string",
+                 "Target .docx filename (without user prefix)").to_dict(),
+    ToolProperty("paragraph_index", "number",
+                 "Zero-based paragraph index to attach comment to").to_dict(),
     ToolProperty("text", "string", "Comment text").to_dict(),
     ToolProperty("author", "string", "Optional author name").to_dict(),
 ])
@@ -2302,18 +2426,23 @@ def word_add_comment(context) -> str:
         xml = comments_part.blob.decode("utf-8", errors="ignore")
         root = ET.fromstring(xml)
         # Compute new ID
-        existing_ids = [int(el.attrib.get(qn("w:id"), "0")) for el in root.findall(".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}comment")]
+        existing_ids = [int(el.attrib.get(qn("w:id"), "0")) for el in root.findall(
+            ".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}comment")]
         new_id = max(existing_ids) + 1 if existing_ids else 0
         c_el = ET.Element("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}comment", {
             qn("w:id"): str(new_id),
             qn("w:author"): author,
         })
-        p_el = ET.SubElement(c_el, "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p")
-        r_el = ET.SubElement(p_el, "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r")
-        t_el = ET.SubElement(r_el, "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t")
+        p_el = ET.SubElement(
+            c_el, "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p")
+        r_el = ET.SubElement(
+            p_el, "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r")
+        t_el = ET.SubElement(
+            r_el, "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t")
         t_el.text = str(text)
         root.append(c_el)
-        comments_part._blob = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+        comments_part._blob = ET.tostring(
+            root, encoding="utf-8", xml_declaration=True)
         # Mark paragraph with comment range start/end
         p_elm = p._element
         start = OxmlElement("w:commentRangeStart")
@@ -2334,9 +2463,13 @@ def word_add_comment(context) -> str:
     _upload_file_to_blob(local_path, blob_name)
     sas = _generate_blob_sas_url(blob_name, permissions="r")
     return json.dumps({"blob": blob_name, "sasUrl": sas.get("url"), "expiresUtc": sas.get("expiresUtc"), "commentId": new_id})
+
+
 word_tool_props_get_all_comments = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-    ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("filename", "string",
+                 "Target .docx filename (without user prefix)").to_dict(),
 ])
 
 
@@ -2383,8 +2516,10 @@ def word_get_all_comments(context) -> str:
 
 
 word_tool_props_get_comments_by_author = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-    ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("filename", "string",
+                 "Target .docx filename (without user prefix)").to_dict(),
     ToolProperty("author", "string", "Author name to filter").to_dict(),
 ])
 
@@ -2418,7 +2553,8 @@ def word_get_comments_by_author(context) -> str:
             comments_part = rels[0].target_part
             xml = comments_part.blob.decode("utf-8", errors="ignore")
             import re
-            pattern = re.compile(rf"<w:comment[\s\S]*?w:author=\"{re.escape(author)}\"[\s\S]*?<w:t>([\s\S]*?)</w:t>")
+            pattern = re.compile(
+                rf"<w:comment[\s\S]*?w:author=\"{re.escape(author)}\"[\s\S]*?<w:t>([\s\S]*?)</w:t>")
             for match in pattern.findall(xml):
                 results.append({"text": match})
     except Exception as exc:
@@ -2433,9 +2569,12 @@ def word_get_comments_by_author(context) -> str:
 
 
 word_tool_props_get_comments_for_paragraph = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-    ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
-    ToolProperty("paragraph_index", "number", "Zero-based paragraph index").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("filename", "string",
+                 "Target .docx filename (without user prefix)").to_dict(),
+    ToolProperty("paragraph_index", "number",
+                 "Zero-based paragraph index").to_dict(),
 ])
 
 
@@ -2487,15 +2626,19 @@ def word_get_comments_for_paragraph(context) -> str:
 
 
 word_tool_props_convert_to_pdf = json.dumps([
-    ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-    ToolProperty("filename", "string", "Source .docx filename (without user prefix)").to_dict(),
-    ToolProperty("pdf_filename", "string", "Destination .pdf filename (without user prefix; optional)").to_dict(),
+    ToolProperty("user_id", "string",
+                 "User identifier used to namespace blobs").to_dict(),
+    ToolProperty("filename", "string",
+                 "Source .docx filename (without user prefix)").to_dict(),
+    ToolProperty("pdf_filename", "string",
+                 "Destination .pdf filename (without user prefix; optional)").to_dict(),
 ])
 
 # ---- Storage utilities ----
 
 word_tool_props_list_templates = json.dumps([
-    ToolProperty("prefix", "string", "Templates prefix (default templates/)").to_dict(),
+    ToolProperty("prefix", "string",
+                 "Templates prefix (default templates/)").to_dict(),
 ])
 
 
@@ -2511,7 +2654,8 @@ def word_list_templates(context) -> str:
     payload = json.loads(context)
     args = payload.get("arguments", {})
     prefix = args.get("prefix") or "templates/"
-    container_client = _blob_service_client.get_container_client(_blob_container_name)
+    container_client = _blob_service_client.get_container_client(
+        _blob_container_name)
     names = []
     try:
         for blob in container_client.list_blobs(name_starts_with=prefix):
@@ -2525,8 +2669,10 @@ def word_list_templates(context) -> str:
 
 word_tool_props_add_table = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
         ToolProperty("rows", "number", "Number of rows").to_dict(),
         ToolProperty("cols", "number", "Number of columns").to_dict(),
         ToolProperty(
@@ -2579,10 +2725,14 @@ def word_add_table(context) -> str:
 
 word_tool_props_add_picture = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
-        ToolProperty("image_blob", "string", "Path relative to container; supports subfolders (e.g., image_blob/watermark.png)").to_dict(),
-        ToolProperty("width_points", "number", "Optional width in points").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("image_blob", "string",
+                     "Path relative to container; supports subfolders (e.g., image_blob/watermark.png)").to_dict(),
+        ToolProperty("width_points", "number",
+                     "Optional width in points").to_dict(),
     ]
 )
 
@@ -2644,8 +2794,10 @@ def word_add_picture(context) -> str:
 
 word_tool_props_add_page_break = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
     ]
 )
 
@@ -2678,9 +2830,12 @@ def word_add_page_break(context) -> str:
 
 word_tool_props_get_paragraph_text = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
-        ToolProperty("paragraph_index", "number", "Zero-based paragraph index").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("paragraph_index", "number",
+                     "Zero-based paragraph index").to_dict(),
     ]
 )
 
@@ -2712,11 +2867,15 @@ def word_get_paragraph_text(context) -> str:
 
 word_tool_props_find_text = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
         ToolProperty("text_to_find", "string", "Text to search").to_dict(),
-        ToolProperty("match_case", "boolean", "Case sensitive (default true)").to_dict(),
-        ToolProperty("whole_word", "boolean", "Whole word match (default false)").to_dict(),
+        ToolProperty("match_case", "boolean",
+                     "Case sensitive (default true)").to_dict(),
+        ToolProperty("whole_word", "boolean",
+                     "Whole word match (default false)").to_dict(),
     ]
 )
 
@@ -2758,15 +2917,21 @@ def word_find_text(context) -> str:
 
 word_tool_props_format_text = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
-        ToolProperty("paragraph_index", "number", "Zero-based paragraph index").to_dict(),
-        ToolProperty("start_pos", "number", "Start char index inclusive").to_dict(),
-        ToolProperty("end_pos", "number", "End char index exclusive").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("paragraph_index", "number",
+                     "Zero-based paragraph index").to_dict(),
+        ToolProperty("start_pos", "number",
+                     "Start char index inclusive").to_dict(),
+        ToolProperty("end_pos", "number",
+                     "End char index exclusive").to_dict(),
         ToolProperty("bold", "boolean", "Set bold").to_dict(),
         ToolProperty("italic", "boolean", "Set italic").to_dict(),
         ToolProperty("underline", "boolean", "Set underline").to_dict(),
-        ToolProperty("color", "string", "Hex color without #, e.g., FF0000").to_dict(),
+        ToolProperty("color", "string",
+                     "Hex color without #, e.g., FF0000").to_dict(),
         ToolProperty("font_size", "number", "Font size in points").to_dict(),
         ToolProperty("font_name", "string", "Font family name").to_dict(),
     ]
@@ -2856,9 +3021,12 @@ def word_format_text(context) -> str:
 
 word_tool_props_delete_paragraph = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
-        ToolProperty("paragraph_index", "number", "Zero-based paragraph index").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("paragraph_index", "number",
+                     "Zero-based paragraph index").to_dict(),
     ]
 )
 
@@ -2895,15 +3063,18 @@ def word_delete_paragraph(context) -> str:
 
 word_tool_props_create_custom_style = json.dumps(
     [
-        ToolProperty("user_id", "string", "User identifier used to namespace blobs").to_dict(),
-        ToolProperty("filename", "string", "Target .docx filename (without user prefix)").to_dict(),
+        ToolProperty("user_id", "string",
+                     "User identifier used to namespace blobs").to_dict(),
+        ToolProperty("filename", "string",
+                     "Target .docx filename (without user prefix)").to_dict(),
         ToolProperty("style_name", "string", "New style name").to_dict(),
         ToolProperty("bold", "boolean", "Bold").to_dict(),
         ToolProperty("italic", "boolean", "Italic").to_dict(),
         ToolProperty("font_size", "number", "Font size in points").to_dict(),
         ToolProperty("font_name", "string", "Font family name").to_dict(),
         ToolProperty("color", "string", "Hex color without #").to_dict(),
-        ToolProperty("base_style", "string", "Base style name, e.g., Normal").to_dict(),
+        ToolProperty("base_style", "string",
+                     "Base style name, e.g., Normal").to_dict(),
     ]
 )
 
@@ -2935,7 +3106,8 @@ def word_create_custom_style(context) -> str:
     local_path = _download_blob_to_temp(blob_name)
     doc = _docx.Document(local_path)
     try:
-        from docx.enum.style import WD_STYLE_TYPE  # use direct import to ensure enum access
+        # use direct import to ensure enum access
+        from docx.enum.style import WD_STYLE_TYPE
         style_type = WD_STYLE_TYPE.PARAGRAPH
     except Exception:
         style_type = None

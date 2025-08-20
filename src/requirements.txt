@@ -5,6 +5,7 @@
 azure-functions
 python-docx
 azure-storage-blob
+docx2pdf
 msal
 requests
 requests-toolbelt
