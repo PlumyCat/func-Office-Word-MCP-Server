@@ -122,9 +122,11 @@ def _init_storage():
         _blob_service_client = BlobServiceClient.from_connection_string(connection_string)
     try:
         _blob_service_client.create_container(_blob_container_name)
-    except Exception:
+    except Exception as exc:
         # Likely already exists or insufficient permissions; continue
-        pass
+        logging.warning(
+            "Could not create container %s: %s", _blob_container_name, exc
+        )
 
 
 def _get_blob_client(blob_name: str):
@@ -162,8 +164,12 @@ def _with_retries(operation, *, max_attempts: int = 3, base_delay_seconds: float
             try:
                 import time
                 time.sleep(sleep_for)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.warning(
+                    "Retry sleep failed for operation %s (user: unknown, file: unknown): %s",
+                    getattr(operation, "__name__", repr(operation)),
+                    exc,
+                )
     if last_exc:
         raise last_exc
     return None
@@ -185,9 +191,9 @@ def _ensure_user_paths(user_id: str) -> list[str]:
                 return client.upload_blob(b"", overwrite=False)
             _with_retries(_op)
             created.append(ph)
-        except Exception:
+        except Exception as exc:
             # Exists or not allowed; ignore
-            pass
+            logging.warning("Failed to create placeholder %s: %s", ph, exc)
     return created
 
 
@@ -277,8 +283,20 @@ def _apply_blob_ttl(blob_client) -> None:
         except TypeError:
             blob_client.set_blob_expiry(expiry_time=expires_on)
             return
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Failed to set expiry for blob %s: %s",
+            getattr(blob_client, "blob_name", "unknown"),
+            exc,
+        )
+    try:
+        blob_client.set_blob_metadata({"expiry_utc": expires_on.isoformat()})
+    except Exception as exc:
+        logging.warning(
+            "Failed to set metadata expiry for blob %s: %s",
+            getattr(blob_client, "blob_name", "unknown"),
+            exc,
+        )
 
 
 def _upload_bytes_to_blob(blob_client, data: bytes, content_settings=None) -> None:
@@ -299,8 +317,11 @@ def _init_graph_session():
             from datetime import datetime, timezone
             if datetime.now(timezone.utc) < _graph_token_expires:
                 return
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning(
+                "Graph session expiry check failed (user: N/A, file: N/A): %s",
+                exc,
+            )
     try:
         import requests
         import msal
@@ -401,11 +422,6 @@ def _resolve_sharepoint_drive() -> str:
     url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive"
     data = _graph_request("GET", url).json()
     return data.get("id")
-    try:
-        blob_client.set_blob_metadata({"expiry_utc": expires_on.isoformat()})
-    except Exception:
-        # Ignore if metadata fails; TTL will not be enforced at service level
-        pass
 
 
 # Define tool properties JSON for Word tools
@@ -451,18 +467,30 @@ def word_create_document(context) -> str:
                     if title:
                         try:
                             doc.core_properties.title = title
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logging.warning(
+                                "Failed to set title for %s: %s",
+                                qualified_blob_name,
+                                exc,
+                            )
                     if author:
                         try:
                             doc.core_properties.author = author
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logging.warning(
+                                "Failed to set author for %s: %s",
+                                qualified_blob_name,
+                                exc,
+                            )
                     doc.save(local_path)
                     _upload_file_to_blob(local_path, qualified_blob_name)
-                except Exception:
+                except Exception as exc:
                     # Ignore property set failures on template-produced docs
-                    pass
+                    logging.warning(
+                        "Failed to apply core properties to %s: %s",
+                        qualified_blob_name,
+                        exc,
+                    )
         except Exception:
             # Fallback: create a blank document
             local_path = _word_doc_path(filename)
@@ -470,13 +498,21 @@ def word_create_document(context) -> str:
             if title:
                 try:
                     doc.core_properties.title = title
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.warning(
+                        "Failed to set title for %s: %s",
+                        qualified_blob_name,
+                        exc,
+                    )
             if author:
                 try:
                     doc.core_properties.author = author
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.warning(
+                        "Failed to set author for %s: %s",
+                        qualified_blob_name,
+                        exc,
+                    )
             doc.save(local_path)
             _upload_file_to_blob(local_path, qualified_blob_name)
     else:
@@ -485,13 +521,21 @@ def word_create_document(context) -> str:
         if title:
             try:
                 doc.core_properties.title = title
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.warning(
+                    "Failed to set title for %s: %s",
+                    qualified_blob_name,
+                    exc,
+                )
         if author:
             try:
                 doc.core_properties.author = author
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.warning(
+                    "Failed to set author for %s: %s",
+                    qualified_blob_name,
+                    exc,
+                )
         doc.save(local_path)
         _upload_file_to_blob(local_path, qualified_blob_name)
     # Return blob info and SAS URL for convenience
@@ -524,6 +568,7 @@ def init_user(req: func.HttpRequest) -> func.HttpResponse:
 
 def _read_form_file(req: func.HttpRequest, field_name: str = "file") -> tuple[bytes, str, str]:
     """Read raw bytes and filename from multipart/form-data or octet-stream."""
+    user_hint = req.params.get("userId") or "unknown"
     # Prefer multipart (explicit parse; Azure Functions does not auto-parse files)
     try:
         ct_header = req.headers.get("content-type", "")
@@ -554,10 +599,20 @@ def _read_form_file(req: func.HttpRequest, field_name: str = "file") -> tuple[by
                     data = part.content or b""
                     if data:
                         return data, filename, content_type or "application/octet-stream"
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:
+                logging.warning(
+                    "Failed to parse multipart data for field %s (user %s): %s",
+                    field_name,
+                    user_hint,
+                    exc,
+                )
+    except Exception as exc:
+        logging.warning(
+            "Failed to read multipart body for field %s (user %s): %s",
+            field_name,
+            user_hint,
+            exc,
+        )
     # Try framework-provided files (may not exist in Azure Functions)
     try:
         files = req.files or {}
@@ -567,8 +622,13 @@ def _read_form_file(req: func.HttpRequest, field_name: str = "file") -> tuple[by
             filename = getattr(file, "filename", None) or req.params.get("fileName") or "upload.bin"
             content_type = getattr(file, "content_type", None) or req.headers.get("content-type") or "application/octet-stream"
             return data, filename, content_type
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Framework file parsing failed for field %s (user %s): %s",
+            field_name,
+            user_hint,
+            exc,
+        )
     # Fallback to raw body
     data = req.get_body() or b""
     filename = req.params.get("fileName") or "upload.bin"
@@ -592,8 +652,12 @@ def _guess_mime_type(filename: str, header_content_type: str | None) -> str:
         guessed, _ = mimetypes.guess_type(filename)
         if guessed:
             return guessed
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Failed to guess MIME type for file %s: %s",
+            filename,
+            exc,
+        )
     return "application/octet-stream"
 
 
@@ -1220,8 +1284,13 @@ def convert_word_to_pdf(req: func.HttpRequest) -> func.HttpResponse:
         finally:
             try:
                 _graph_delete_item(drive_id, item_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.warning(
+                    "Failed to delete temporary item %s in drive %s: %s",
+                    item_id,
+                    drive_id,
+                    exc,
+                )
         # Store PDF to Blob and return SAS URL
         _init_storage()
         # Compute destination blob path
@@ -1342,8 +1411,12 @@ def _set_table_width(table, width_value: float, width_type: str = "points"):
             pct = str(int(float(width_value) * 50))
             tbl_w.set(qn("w:w"), pct)
             tbl_w.set(qn("w:type"), "pct")
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning(
+                "Failed to set table width to %s (file: unknown): %s",
+                width_value,
+                exc,
+            )
     else:
         tw = to_twips(width_value)
         if tw is not None:
@@ -1372,8 +1445,12 @@ def _set_cell_width(cell, width_value: float, width_type: str = "points"):
             pct = str(int(float(width_value) * 50))
             tc_w.set(qn("w:w"), pct)
             tc_w.set(qn("w:type"), "pct")
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning(
+                "Failed to set cell width to %s (file: unknown): %s",
+                width_value,
+                exc,
+            )
     else:
         tw = to_twips(width_value)
         if tw is not None:
@@ -1395,8 +1472,11 @@ def _set_table_layout_autofit(table):
     tbl_layout.set(qn("w:type"), "autofit")
     try:
         table.autofit = True
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Failed to enable table autofit (file: unknown): %s",
+            exc,
+        )
 
 
 word_tool_props_format_table = json.dumps([
@@ -1434,13 +1514,22 @@ def word_format_table(context) -> str:
     if has_header_row and len(table.rows) > 0:
         try:
             for p in table.rows[0].cells[0].paragraphs:
-                pass
+                logging.warning(
+                    "No operation for header paragraph in file %s (user %s)",
+                    blob_name,
+                    user_id,
+                )
             # Visual cue: bold header row
             for cell in table.rows[0].cells:
                 for run in cell.paragraphs[0].runs:
                     run.bold = True
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning(
+                "Failed to format header row for %s (user %s): %s",
+                blob_name,
+                user_id,
+                exc,
+            )
     doc.save(local_path)
     _upload_file_to_blob(local_path, blob_name)
     sas = _generate_blob_sas_url(blob_name, permissions="r")
@@ -1577,8 +1666,13 @@ def word_highlight_table_header(context) -> str:
         try:
             for run in cell.paragraphs[0].runs:
                 run.font.color.rgb = _docx.shared.RGBColor.from_string(text_color)
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning(
+                "Failed to set header text color for %s (user %s): %s",
+                blob_name,
+                user_id,
+                exc,
+            )
     doc.save(local_path)
     _upload_file_to_blob(local_path, blob_name)
     sas = _generate_blob_sas_url(blob_name, permissions="r")
@@ -1789,8 +1883,13 @@ def word_set_table_cell_alignment(context) -> str:
             v = vm.get(vertical)
             if v is not None:
                 cell.vertical_alignment = v
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Failed to set cell alignment for %s (user %s): %s",
+            blob_name,
+            user_id,
+            exc,
+        )
     doc.save(local_path)
     _upload_file_to_blob(local_path, blob_name)
     sas = _generate_blob_sas_url(blob_name, permissions="r")
@@ -1854,8 +1953,13 @@ def word_set_table_alignment_all(context) -> str:
                         p.alignment = halign
                 if valign is not None:
                     cell.vertical_alignment = valign
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Failed to set table alignment for %s (user %s): %s",
+            blob_name,
+            user_id,
+            exc,
+        )
     doc.save(local_path)
     _upload_file_to_blob(local_path, blob_name)
     sas = _generate_blob_sas_url(blob_name, permissions="r")
@@ -1927,17 +2031,32 @@ def word_format_table_cell_text(context) -> str:
                 if color:
                     try:
                         run.font.color.rgb = _docx.shared.RGBColor.from_string(str(color))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logging.warning(
+                            "Failed to set font color for %s (user %s): %s",
+                            blob_name,
+                            user_id,
+                            exc,
+                        )
                 if font_size is not None:
                     try:
                         run.font.size = _docx.shared.Pt(float(font_size))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logging.warning(
+                            "Failed to set font size for %s (user %s): %s",
+                            blob_name,
+                            user_id,
+                            exc,
+                        )
                 if font_name:
                     run.font.name = str(font_name)
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.error(
+            "Failed to format table cell text for %s (user %s): %s",
+            blob_name,
+            user_id,
+            exc,
+        )
     doc.save(local_path)
     _upload_file_to_blob(local_path, blob_name)
     sas = _generate_blob_sas_url(blob_name, permissions="r")
@@ -2253,8 +2372,13 @@ def word_get_all_comments(context) -> str:
             import re
             for cid, ctext in re.findall(r"<w:comment[\s\S]*?w:id=\"(\d+)\"[\s\S]*?<w:t>([\s\S]*?)</w:t>", xml):
                 comments.append({"id": cid, "text": ctext})
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Failed to extract comments for %s (user %s): %s",
+            blob_name,
+            user_id,
+            exc,
+        )
     return json.dumps(comments)
 
 
@@ -2297,8 +2421,14 @@ def word_get_comments_by_author(context) -> str:
             pattern = re.compile(rf"<w:comment[\s\S]*?w:author=\"{re.escape(author)}\"[\s\S]*?<w:t>([\s\S]*?)</w:t>")
             for match in pattern.findall(xml):
                 results.append({"text": match})
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Failed to extract comments by author %s for %s (user %s): %s",
+            author,
+            blob_name,
+            user_id,
+            exc,
+        )
     return json.dumps(results)
 
 
@@ -2345,8 +2475,14 @@ def word_get_comments_for_paragraph(context) -> str:
             for cid, ctext in re.findall(r"<w:comment[\s\S]*?w:id=\"(\d+)\"[\s\S]*?<w:t>([\s\S]*?)</w:t>", xml):
                 if ctext and (ctext in para_text or para_text in ctext):
                     matches.append({"id": cid, "text": ctext})
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Failed to get comments for paragraph %s in %s (user %s): %s",
+            p_idx,
+            blob_name,
+            user_id,
+            exc,
+        )
     return json.dumps(matches)
 
 
@@ -2691,13 +2827,23 @@ def word_format_text(context) -> str:
     if color:
         try:
             fmt.color.rgb = _docx.shared.RGBColor.from_string(str(color))
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning(
+                "Failed to set font color for %s (user %s): %s",
+                blob_name,
+                user_id,
+                exc,
+            )
     if font_size is not None:
         try:
             fmt.size = _docx.shared.Pt(float(font_size))
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning(
+                "Failed to set font size for %s (user %s): %s",
+                blob_name,
+                user_id,
+                exc,
+            )
     if font_name:
         fmt.name = str(font_name)
     if after_text:
@@ -2804,8 +2950,15 @@ def word_create_custom_style(context) -> str:
     try:
         base = styles[base_style]
         style.base_style = base
-    except Exception:
-        pass
+    except Exception as exc:
+        logging.warning(
+            "Failed to set base style %s for %s in file %s (user %s): %s",
+            base_style,
+            style_name,
+            blob_name,
+            user_id,
+            exc,
+        )
     f = style.font
     if bold is not None:
         f.bold = bool(bold)
@@ -2814,15 +2967,27 @@ def word_create_custom_style(context) -> str:
     if font_size is not None:
         try:
             f.size = _docx.shared.Pt(float(font_size))
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning(
+                "Failed to set font size for style %s in %s (user %s): %s",
+                style_name,
+                blob_name,
+                user_id,
+                exc,
+            )
     if font_name:
         f.name = str(font_name)
     if color:
         try:
             f.color.rgb = _docx.shared.RGBColor.from_string(str(color))
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.warning(
+                "Failed to set color for style %s in %s (user %s): %s",
+                style_name,
+                blob_name,
+                user_id,
+                exc,
+            )
     doc.save(local_path)
     _upload_file_to_blob(local_path, blob_name)
     sas = _generate_blob_sas_url(blob_name, permissions="r")
