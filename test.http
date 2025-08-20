@@ -1,0 +1,67 @@
+@base = http://localhost:7075/api
+@user_id = user-456
+
+### ping
+GET {{base}}/ping
+
+### convert_word_to_pdf (upload direct)
+POST {{base}}/convert/word-to-pdf
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="test.docx"
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+
+< @test.docx
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### init_user
+POST {{base}}/users/init
+Content-Type: application/json
+
+{ "userId": "{{user_id}}" }
+
+### list_images
+# NOTE: l'implémentation actuelle exige userId en query (?userId=) -> laissé ici
+GET {{base}}/users/images?userId={{user_id}}&pageSize=10
+
+### upload_image
+POST {{base}}/users/images?userId={{user_id}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="image.png"
+Content-Type: image/png
+
+< @image.png
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### list_templates_http
+GET {{base}}/users/templates?userId={{user_id}}&pageSize=10
+
+### upload_template
+POST {{base}}/users/templates?userId={{user_id}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="template.docx"
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.template
+
+< @template.docx
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### list_shared_templates
+GET {{base}}/templates?pageSize=10
+
+### mcp_exec (exemple add paragraph)
+POST {{base}}/mcp/exec
+Content-Type: application/json
+
+{
+  "toolName": "word_add_paragraph",
+  "arguments": {
+    "user_id": "{{user_id}}",
+    "filename": "test.docx",
+    "text": "Ceci est un test."
+  }
+}
