@@ -171,20 +171,32 @@ An Azure Storage Emulator is needed for this sample because the Word tools use A
 5. **List Tools**.  Click on a tool and **Run Tool**.
 
 
+### Authentification & souscription (Azure CLI **et** azd)
 
-## Deploy to Azure for Remote MCP
+Assure-toi d’être connecté **au même** *tenant* et **à la même** souscription côté **Azure CLI** et **Azure Developer CLI (azd)**.
 
-Run this [azd](https://aka.ms/azd) command to provision the function app, with any required Azure resources, and deploy your code:
+1. **Azure CLI — sélectionner tenant + souscription**
 
-```shell
-azd up
-```
+   ```bash
+   az login --tenant <TENANT_ID>
+   az account set --subscription <SUBSCRIPTION_ID>
+   # Vérifier
+   az account show -o table
+   ```
 
-You can opt-in to a VNet being used in the sample. To do so, do this before `azd up`
+2. **azd — aligner la souscription par défaut**
 
-```bash
-azd env set VNET_ENABLED true
-```
+   ```bash
+   azd logout
+   azd config list
+   azd config set defaults.subscription <SUBSCRIPTION_ID>
+   azd login               # ou: azd login --tenant-id <TENANT_ID> si plusieurs tenants
+   # (Optionnel) Vérifier l'état
+   azd auth login --check-status
+   ```
+
+> En résumé : **Azure CLI** et **azd** doivent pointer sur le **même** `<TENANT_ID>` et le **même** `<SUBSCRIPTION_ID>` avant d’exécuter `azd up`, `azd provision`, etc.
+
 
 Additionally, [API Management]() can be used for improved security and policies over your MCP Server, and [App Service built-in authentication](https://learn.microsoft.com/azure/app-service/overview-authentication-authorization) can be used to set up your favorite OAuth provider including Entra.  
 
