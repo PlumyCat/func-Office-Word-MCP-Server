@@ -171,31 +171,33 @@ An Azure Storage Emulator is needed for this sample because the Word tools use A
 5. **List Tools**.  Click on a tool and **Run Tool**.
 
 
-### Authentification & souscription (Azure CLI **et** azd)
+## Deploy to Azure
 
-Assure-toi d’être connecté **au même** *tenant* et **à la même** souscription côté **Azure CLI** et **Azure Developer CLI (azd)**.
+### Authentication & Subscription (Azure CLI and azd)
 
-1. **Azure CLI — sélectionner tenant + souscription**
+Make sure you're logged into the **same** tenant and **same** subscription for both **Azure CLI** and **Azure Developer CLI (azd)**.
+
+1. **Azure CLI — select tenant + subscription**
 
    ```bash
    az login --tenant <TENANT_ID>
    az account set --subscription <SUBSCRIPTION_ID>
-   # Vérifier
+   # Verify
    az account show -o table
    ```
 
-2. **azd — aligner la souscription par défaut**
+2. **azd — align default subscription**
 
    ```bash
    azd logout
    azd config list
    azd config set defaults.subscription <SUBSCRIPTION_ID>
-   azd login               # ou: azd login --tenant-id <TENANT_ID> si plusieurs tenants
-   # (Optionnel) Vérifier l'état
+   azd login               # or: azd login --tenant-id <TENANT_ID> if multiple tenants
+   # (Optional) Check status
    azd auth login --check-status
    ```
 
-> En résumé : **Azure CLI** et **azd** doivent pointer sur le **même** `<TENANT_ID>` et le **même** `<SUBSCRIPTION_ID>` avant d’exécuter `azd up`, `azd provision`, etc.
+> Summary: Both **Azure CLI** and **azd** must point to the **same** `<TENANT_ID>` and **same** `<SUBSCRIPTION_ID>` before running `azd up`, `azd provision`, etc.
 
 
 Additionally, [API Management]() can be used for improved security and policies over your MCP Server, and [App Service built-in authentication](https://learn.microsoft.com/azure/app-service/overview-authentication-authorization) can be used to set up your favorite OAuth provider including Entra.  
